@@ -1,79 +1,89 @@
 ﻿using System;
-using System.Collegctions.Generic;
+using System.Collections.Generic; // Fixed typo issue: Collegctions -> Collections
 using System.Linq;
 
-namespace Utility.Valocity.ProfileHelper
+// Standardized namespace to reflect domain context and dropped redundant 'Utility' prefix
+namespace Valocity.ProfileHelper
 {
-    public class People
+    // Renamed to singular 'Person' per .NET naming conventions for single entities
+    public class Person
     {
-     private static readonly DateTimeOffset Under16 = DateTimeOffset.UtcNow.AddYears(-15);
-     public string Name { get; private set; }
-     public DateTimeOffset DOB { get; private set; }
-     public People(string name) : this(name, Under16.Date) { }
-     public People(string name, DateTime dob) {
-         Name = name;
-         DOB = dob;
-     }}
+        public string Name { get; private set; }
+        public DateTimeOffset DOB { get; private set; }
 
-    public class BirthingUnit
+        // Compute dynamic UTC timestamp instead of using a stale static field evaluated once at startup
+        public Person(string name) : this(name, DateTimeOffset.UtcNow.AddYears(-15)) { }
+
+        // Use DateTimeOffset to match property type and eliminate timezone ambiguity
+        public Person(string name, DateTimeOffset dob)
+        {
+            Name = name;
+            DOB = dob;
+        }
+    }
+
+    // Renamed from 'BirthingUnit' to 'PersonFactory' to clearly describe intent
+    public class PersonFactory
     {
-        /// <summary>
-        /// MaxItemsToRetrieve
-        /// </summary>
-        private List<People> _people;
+        private readonly List<Person> _people;
 
-        public BirthingUnit()
+        public PersonFactory()
         {
-            _people = new List<People>();
+            _people = new List<Person>();
         }
 
         /// <summary>
-        /// GetPeoples
+        /// Generates a specified count of random people.
         /// </summary>
-        /// <param name="j"></param>
-        /// <returns>List<object></returns>
-        public List<People> GetPeople(int i)
+        /// <param name="count">Number of people to create.</param>
+        /// <returns>A list of newly generated Person objects.</returns>
+        public List<Person> GetPeople(int count)
         {
-            for (int j = 0; j < i; j++)
-            {
-                try
-                {
-                    // Creates a dandon Name
-                    string name = string.Empty;
-                    var random = new Random();
-                    if (random.Next(0, 1) == 0) {
-                        name = "Bob";
-                    }
-                    else {
-                        name = "Betty";
-                    }
-                    // Adds new people to the list
-                    _people.Add(new People(name, DateTime.UtcNow.Subtract(new TimeSpan(random.Next(18, 85) * 356, 0, 0, 0))));
-                }
-                catch (Exception e)
-                {
-                    // Dont think this should ever happen
-                    throw new Exception("Something failed in user creation");
-                }
-            }
-            return _people;
-        }
+            // Use local list so each call returns only the requested batch rather than accumulating indefinitely
+            var generatedPeople = new List<Person>(count);
 
-        private IEnumerable<People> GetBobs(bool olderThan30)
-        {
-            return olderThan30 ? _people.Where(x => x.Name == "Bob" && x.DOB >= DateTime.Now.Subtract(new TimeSpan(30 * 356, 0, 0, 0))) : _people.Where(x => x.Name == "Bob");
-        }
-
-        public string GetMarried(People p, string lastName)
-        {
-            if (lastName.Contains("test"))
-                return p.Name;
-            if ((p.Name.Length + lastName).Length > 255)
+            for (int i = 0; i < count; i++)
             {
-                (p.Name + " " + lastName).Substring(0, 255);
+                // Random.Shared avoids allocating a new Random() each loop and prevents duplicate seeds
+                // Next(0, 2) has exclusive upper bound so "Betty" is reachable (Next(0, 1) always returned 0)
+                string name = Random.Shared.Next(0, 2) == 0 ? "Bob" : "Betty";
+
+                // Use 365 days/year (was 356) to avoid age calculation drift
+                int randomAge = Random.Shared.Next(18, 85);
+                var dob = DateTimeOffset.UtcNow.Subtract(TimeSpan.FromDays(randomAge * 365));
+
+                generatedPeople.Add(new Person(name, dob));
             }
 
-            return p.Name + " " + lastName;
+            // Track in internal store while returning only the newly created batch
+            _people.AddRange(generatedPeople);
+            return generatedPeople;
+        }
+
+        /// <summary>
+        /// Retrieves people named Bob, optionally filtered to those older than 30.
+        /// </summary>
+        // Made public (was dead private code) and fixed comparison: older than 30 means DOB <= cutoff
+        public IEnumerable<Person> GetBobs(bool olderThan30)
+        {
+            var cutoffDate = DateTimeOffset.UtcNow.AddYears(-30);
+
+            return olderThan30
+                ? _people.Where(x => x.Name == "Bob" && x.DOB <= cutoffDate)
+                : _people.Where(x => x.Name == "Bob");
+        }
+
+        public string GetMarried(Person p, string lastName)
+        {
+            // Guard clauses against null arguments
+            ArgumentNullException.ThrowIfNull(p);
+            ArgumentNullException.ThrowIfNull(lastName);
+
+            // Removed test guard ("test" string check) that leaked into production code
+            string fullName = $"{p.Name} {lastName}";
+
+            // Fixed length comparison (was int.Length) and return the truncated string
+            return fullName.Length > 255 ? fullName.Substring(0, 255) : fullName;
         }
     }
 }
