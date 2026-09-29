@@ -5,6 +5,7 @@
 **Status:** Accepted & Implemented  
 **Target:** `GildedRose.Console` & `GildedRose.Tests`  
 
+
 ---
 
 ## 1. Context & Problem Statement
